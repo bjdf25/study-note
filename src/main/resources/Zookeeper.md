@@ -66,3 +66,21 @@ get -w /znode：
 >
 >  注意：如果Bsession对/znode增加了一个子节点如/znode/sub,则Asession不会收到通知
 
+zookeeper的leader节点作用读写，follower节点和observer节点提供读，会将客户端的写请求转发到leader节点。observer与follower节点的区别是observer不参与leader的选举过程，也不参与写操作的过半写成功策略，observer的目的是为了拓展系统，提高读取速度。
+
+zookeeper的leader选举是通过ZAB协议，当ZAB(Zookeeper atomic broadcast)协议选举了新的leader服务器，并且集群中过半的follower机器与leader完成数据同步之后，ZAB就会退出恢复模式。
+
+ZAB协议的leader election选举为了容忍f个replicas的失败需要有2f+1个replicas，需要过多服务器，使得集群吞吐量下降，所以该算法只适合于zookeeper这种共享集群配置的系统中而很少在需要存储大量数据的系统中使用的原因。
+
+kafka的leader election算法通过在zookeeper动态维护一个ISR（in-sync replicas)set，set中的每个replica都与leader完成了数据的同步，只有set中的replica能被选为leader。在这种模式下，对于f+1个replicas，一个kafka topic能在保证不丢失已commit的消息的前提下容忍f个replica失败。set中有1个replica就能选举成功且不丢失commit的消息。
+
+事实上，为了容忍f个replica的失败，majority vote 和 ISR在commit前等待follower同步的replica的数量是一样的，但是ISR需要的总的replica的数量几乎是majority vote的一半。
+
+redis的leader选举过程是通过哨兵机制来决定的。
+
+### Zookeeper写数据
+
+写数据到主节点之后，主节点会先将数据写入内存，接着会把数据发给从节点，当从节点收到数据写进内存之后会发送一个ack消息给主节点(主节点将数据写进自身内存时也会给自己发送一个ack消息)，当主节点收到的ack消息超过居群节点的一半数量以上时，就会发送commit命令给从节点，从节点收到commit命令之后将存在内存中的数据持久化到硬盘之中。此时这个数据才算真正的写入到集群成功。
+
+##### 两阶段提交：
+
