@@ -39,8 +39,35 @@ delivery guarantee：
 
 Kafka不保证total order，只保证了local order，对于total order有需求的AP系统不适用于kafka。
 
-C：一致性 A：可用性 P：
+C：一致性 A：可用性 P：分区容错性
 
 kafka的读写全部作用于leader分区，follower分区仅作为备份存在。
 
 先写进内存，再写进硬盘。写进内存的ack过半时才commit，这样就保证了过半的机器能持久化数据，防止出现同步机器中一台服务器有数据，一台没有的情况。
+
+kafka的leader election算法通过在zookeeper动态维护一个ISR（in-sync replicas)set，set中的每个replica都与leader完成了数据的同步，只有set中的replica能被选为leader。在这种模式下，对于f+1个replicas，一个kafka topic能在保证不丢失已commit的消息的前提下容忍f个replica失败。set中有1个replica就能选举成功且不丢失commit的消息。
+
+事实上，为了容忍f个replica的失败，majority vote 和 ISR在commit前等待follower同步的replica的数量是一样的，但是ISR需要的总的replica的数量几乎是majority vote的一半。
+
+redis的leader选举过程是通过哨兵机制来决定的。
+
+### Kafka保证消息顺序
+
+Kafka只保证partition的local order，不保证跨partition的topic的total order。
+
+如何保证消息的顺序？
+
+1. 一条topic只有一个partition。（这样违反了Kafka的设计初衷）
+2. 发送的消息会有topic/partition/key/data四个参数，指定partition/key参数使得消息进入同一partition。（相同的key会进入同一partition）
+
+### Kafka出现重复消费
+
+原因：consumer消费了消息没有提交offset(根本原因)。
+
+### Kafka消费者出现消息丢失
+
+原因：consumer拉到了消息还没消费就挂了，但是会自动提交offset。
+
+解决：关闭自动提交offset，改为业务处理完之后手动提交offset。
+
+解决引发的新问题：业务处理完之后突然挂了，offset没有提交，就会出现重复消费。
